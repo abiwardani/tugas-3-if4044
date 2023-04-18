@@ -1,16 +1,20 @@
 from datetime import datetime
 import json
-from kafka import KafkaConsumer, KafkaProducer
-from kafka.structs import TopicPartition
 
 from pyspark.streaming import StreamingContext
 from pyspark.streaming.kafka import KafkaUtils
 from pyspark import SparkContext
 
 from pyspark import SparkConf
-from pyspark.sql import SparkSession
 from pyspark import sql
 
+from pyspark.sql.types import (
+    StructType,
+    StructField,
+    StringType,
+    TimestampType,
+    IntegerType,
+)
 
 from utils.date import (
     facebook_date_to_YYYYMMDD_HHMMSS,
@@ -20,15 +24,14 @@ from utils.date import (
     youtube_date_to_YYYYMMDD_HHMMSS,
 )
 
+from utils.db import URL, TABLE, USER, PASSWORD
+
 BOOTSTRAP_SERVER = "localhost:9092"
 KAFKA_TOPIC = "json-social-media"
 
 conf = SparkConf().setAppName("spark-social-media").setMaster("local")
 sc = SparkContext(conf=conf)
 sqlContext = sql.SQLContext(sc)
-# spark = SparkSession.builder.appName("spark-social-media").getOrCreate()
-
-# sc = SparkContext()
 
 
 def run_spark():
@@ -72,54 +75,53 @@ def run_spark():
 
         result = lines.window(window_length, sliding_interval)
         result = result.map(preprocess_json)
+        result = result.map(
+            lambda x: ((x[0], x[1], x[2]), x[3])
+        )  # key: triple of (social_media, timestamp, id), value = count
+        result = result.reduceByKey(lambda x, y: x + y)
+        result = result.map(lambda x: ((x[0][0], x[0][1]), (1, x[1])))
+        result = result.reduceByKey(lambda x, y: (x[0] + y[0], x[1] + y[1]))
+        result = result.map(
+            lambda x: (x[0][0], x[0][1], x[1][0], x[1][1])
+        )  # (social_media, timestamp, unique_count, count)
 
         return result
 
     # run the function
     result = process_stream_data(lines)
-
-    HOST = "localhost"
-    PORT = 5432
-    DB = "tbd_medsos"
-    TABLE = "socmed_2"
-    USER = "medsos"
-    PASSWORD = "123456"
-    URL = f"jdbc:postgresql://{HOST}:{PORT}/{DB}"
+    result.pprint()
 
     def saveToDB(rdd):
-        from pyspark.sql.types import (
-            StructType,
-            StructField,
-            StringType,
-            TimestampType,
-            IntegerType,
-        )
-
-        socmed2Schema = StructType(
+        socmedTableSchema = StructType(
             [
                 StructField("social_media", StringType(), True),
                 StructField("timestamp", TimestampType(), True),
-                StructField("user_id", StringType(), True),
-                StructField("test", IntegerType(), True),
+                StructField("unique_count", IntegerType(), True),
+                StructField("count", IntegerType(), True),
+                StructField("created_at", TimestampType(), True),
+                StructField("updated_at", TimestampType(), True),
             ]
         )
         if not rdd.isEmpty():
-            # df = sqlContext.createDataFrame(rdd, schema=socmed2Schema)
-            # df = rdd.toDF(["social_media", "timestamp", "user_id", "test"])
-            # datetime.strptime('2020-08-20 10:00:00', '%Y-%m-%d %H:%M:%S')
             rdd = rdd.map(
                 lambda x: (
                     x[0],
                     datetime.strptime(x[1], "%Y-%m-%d %H:%M:%S"),
                     x[2],
                     x[3],
+                    datetime.now(),
+                    datetime.now(),
                 )
             )
-            df = rdd.toDF(socmed2Schema)
-            df.show(5)
-            df.select("social_media", "timestamp", "user_id", "test").write.format(
-                "jdbc"
-            ).mode("append").option("url", URL).option(
+            df = rdd.toDF(socmedTableSchema)
+            df.select(
+                "social_media",
+                "timestamp",
+                "count",
+                "unique_count",
+                "created_at",
+                "updated_at",
+            ).write.format("jdbc").mode("append").option("url", URL).option(
                 "driver", "org.postgresql.Driver"
             ).option(
                 "dbtable", TABLE
@@ -131,51 +133,9 @@ def run_spark():
 
     result.foreachRDD(saveToDB)
 
-    # result.pprint()
     ssc.start()
     ssc.awaitTermination()
 
 
-def produce_msg():
-    producer = KafkaProducer(bootstrap_servers=BOOTSTRAP_SERVER)
-    for _ in range(20):
-        try:
-            producer.send("foobar", b"yahh")
-            print("sent")
-        except ValueError as e:
-            print(e)
-
-
-def consume_msg():
-    topic = "foobar"
-    consumer = KafkaConsumer(topic, bootstrap_servers=BOOTSTRAP_SERVER)
-
-    partitions = consumer.partitions_for_topic(topic)
-    for p in partitions:
-        topic_partition = TopicPartition(topic, p)
-        consumer.seek(partition=topic_partition, offset=0)
-        for msg in consumer:
-            print(msg.value.decode("utf-8"))
-
-
-def consume_json():
-    topic = "json-social-media"
-    consumer = KafkaConsumer(topic, bootstrap_servers=BOOTSTRAP_SERVER)
-
-    partitions = consumer.partitions_for_topic(topic)
-    for p in partitions:
-        topic_partition = TopicPartition(topic, p)
-        consumer.seek(partition=topic_partition, offset=0)
-        for msg in consumer:
-            data = json.loads(msg.value.decode("utf-8"))
-            print(data)
-            print("-------------------------")
-            print("-------------------------")
-            print("-------------------------")
-            print("-------------------------")
-
-
 if __name__ == "__main__":
-    # produce_msg()
-    # consume_json()
     run_spark()

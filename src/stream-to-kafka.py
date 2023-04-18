@@ -10,17 +10,7 @@ TOPIC = "json-social-media"
 producer = KafkaProducer(bootstrap_servers="localhost:9092")
 
 
-def stream1():
-    s = requests.Session()
-    s.auth = (USERNAME, "")
-
-    with s.get(URL, headers=None, stream=True) as resp:
-        for line in resp.iter_lines():
-            if line:
-                print(line)
-
-
-def stream2():
+def stream_api():
     s = requests.Session()
     s.auth = (USERNAME, "")
 
@@ -30,13 +20,9 @@ def stream2():
 
 
 if __name__ == "__main__":
-    count_doc = 0
-    for raw in stream2():
+    for raw in stream_api():
         try:
             data = json.loads(raw)
             producer.send(TOPIC, raw)
-            # with open(f"./json_dump/data-{count_doc}.json", "w") as f:
-            #     json.dump(data, f)
-            # count_doc += 1
         except ValueError as e:
             continue
