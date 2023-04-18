@@ -133,3 +133,6 @@ dmypy.json
 
 # SparkStreaming checkpoint
 checkpoint/
+
+# JSON file from the stream API
+json_dump/

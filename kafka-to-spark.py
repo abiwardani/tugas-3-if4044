@@ -4,9 +4,20 @@ from kafka.structs import TopicPartition
 
 from pyspark.streaming import StreamingContext
 from pyspark.streaming.kafka import KafkaUtils
+from pyspark import SparkContext
+
+from utils import (
+    facebook_date_to_YYYYMMDD_HHMMSS,
+    round_time_five_minute,
+    timestamp_to_YYYYMMDD_HHMMSS,
+    twitter_date_to_YYYYMMDD_HHMMSS,
+    youtube_date_to_YYYYMMDD_HHMMSS,
+)
 
 BOOTSTRAP_SERVER = "localhost:9092"
 KAFKA_TOPIC = "json-social-media"
+
+sc = SparkContext()
 
 
 def run_spark():
@@ -17,43 +28,41 @@ def run_spark():
     )
 
     def process_stream_data(lines, window_length=2, sliding_interval=2):
-        def updateStatKey(newData, runningCount):
-            if runningCount is None:
-                runningCount = 0
-            return sum(newData, runningCount)
+        def preprocess_json(x):
+            data = json.loads(x[1])
+            socmed_type = data["crawler_target"]["specific_resource_type"]
 
-        def convert_line_to_stat_data(x):
-            data_int = list(map(int, x[1].split()))
-            return [
-                ("sum_x_square:", sum(list(map(lambda x: x * x, data_int)))),
-                ("sum_x:", sum(data_int)),
-                ("n_data:", len(data_int)),
-            ]
+            timestamp = "null"
+            user = "null"
+
+            if socmed_type == "instagram":
+                timestamp_data = data["created_time"]
+                timestamp = timestamp_to_YYYYMMDD_HHMMSS(timestamp_data)
+                user_id = data["user"]["id"]
+            elif socmed_type == "youtube":
+                timestamp_data = data["snippet"]["publishedAt"]
+                timestamp = youtube_date_to_YYYYMMDD_HHMMSS(timestamp_data)
+                user_id = data["snippet"].get("channelId", "unknown")
+            elif socmed_type == "facebook":
+                timestamp_data = data["created_time"]
+                timestamp = facebook_date_to_YYYYMMDD_HHMMSS(timestamp_data)
+                user_id = data["from"]["id"]
+            elif socmed_type == "twitter":
+                timestamp_data = data["created_at"]
+                timestamp = twitter_date_to_YYYYMMDD_HHMMSS(timestamp_data)
+                user_id = data["user_id"]
+
+            rounded_timestamp = round_time_five_minute(timestamp)
+
+            return (socmed_type, timestamp, rounded_timestamp, user_id, 1)
 
         result = lines.window(window_length, sliding_interval)
-        result = result.flatMap(convert_line_to_stat_data)
-        result = result.updateStateByKey(updateStatKey)
+        result = result.map(preprocess_json)
 
-        def compute_variance(data):
-            sum_x_square, sum_x, n_data = data[1], data[3], data[5]
-            variance = (sum_x_square / n_data) - ((sum_x / n_data) ** 2)
-            return (
-                "sum_x_square:",
-                sum_x_square,
-                "sum_x:",
-                sum_x,
-                "n_data:",
-                n_data,
-                "var:",
-                variance,
-            )
-
-        result = result.reduce(lambda x, y: (*x, y[0], y[1]))
-        result = result.map(compute_variance)
         return result
 
     # run the function
-    result = process_stream_data(lines, window_length=2, sliding_interval=2)
+    result = process_stream_data(lines)
 
     result.pprint()
     ssc.start()
@@ -101,4 +110,5 @@ def consume_json():
 
 if __name__ == "__main__":
     # produce_msg()
-    consume_json()
+    # consume_json()
+    run_spark()

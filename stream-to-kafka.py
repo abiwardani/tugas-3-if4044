@@ -30,6 +30,7 @@ def stream2():
 
 
 if __name__ == "__main__":
+    count_doc = 0
     for raw in stream2():
         try:
             data = json.loads(raw)
@@ -38,5 +39,4 @@ if __name__ == "__main__":
             #     json.dump(data, f)
             # count_doc += 1
         except ValueError as e:
-            print(e)
             continue
