@@ -36,7 +36,7 @@ def get_stream(url, prev=None):
 
     return data, curr
 
-producer = KafkaProducer(bootstep_servers=['localhost:9092'], value_serializer=lambda x: dumps(x).encode('utf-8'))
+producer = KafkaProducer(bootstrap_servers=['localhost:9092'], value_serializer=lambda x: dumps(x).encode('utf-8'))
 
 url = "http://128.199.176.197:7551/streaming"
 prev = None
