@@ -13,9 +13,9 @@ def get_db_connection():
     # pw = os.environ['DB_PASSWORD']
 
     conn = psycopg2.connect(host='localhost',
-                database='postgres',
-                user='flask',
-                password='password')
+                database='tbd_medsos',
+                user='medsos',
+                password='123456')
     return conn
 
 
