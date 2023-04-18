@@ -1,0 +1,7 @@
+sudo systemctl start kafka
+sudo systemctl enable zookeeper
+sudo systemctl enable kafka
+kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 4 --topic my_stream
+sudo systemctl status kafka
+python producer.py
+python consumer.py
