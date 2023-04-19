@@ -11,18 +11,31 @@ producer = KafkaProducer(bootstrap_servers="localhost:9092")
 
 
 def stream_api():
-    s = requests.Session()
-    s.auth = (USERNAME, "")
+    try:
+        s = requests.Session()
+        s.auth = (USERNAME, "")
 
-    resp = s.get(STREAMING_URL, stream=True)
-    for chunk in resp.iter_content(chunk_size=None):
-        yield chunk
+        resp = s.get(STREAMING_URL, stream=True)
+        for chunk in resp.iter_content(chunk_size=None):
+            yield chunk
+    except Exception as e:
+        print(e)
+
+
+def run():
+    try:
+        for raw in stream_api():
+            try:
+                json.loads(raw)
+                producer.send(KAFKA_TOPIC, raw)
+            except ValueError as e:
+                continue
+    except ConnectionResetError as e:
+        print(e)
+    finally:
+        print("restarting connection...")
+        run()
 
 
 if __name__ == "__main__":
-    for raw in stream_api():
-        try:
-            data = json.loads(raw)
-            producer.send(KAFKA_TOPIC, raw)
-        except ValueError as e:
-            continue
+    run()
