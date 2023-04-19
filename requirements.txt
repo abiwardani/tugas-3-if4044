@@ -1,0 +1,4 @@
+kafka-python
+pyspark==2.4.7
+requests
+flask
