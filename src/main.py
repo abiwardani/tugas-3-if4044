@@ -49,6 +49,9 @@ def fetch_socmed_data():
         end += ":00"
 
         social_media = req_json['social_media']
+
+        if social_media not in ["twitter", "facebook", "youtube", "instagram"]:
+            return "Invalid social_media value", status.HTTP_400_BAD_REQUEST
     
     conn = get_db_connection()
     cur = conn.cursor()
