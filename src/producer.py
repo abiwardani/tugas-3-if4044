@@ -3,6 +3,7 @@ from json import loads, dumps
 from kafka import KafkaProducer
 
 USERNAME = "a57de080-f7bc-4022-93dc-612d2af58d31"
+KAFKA_TOPIC = "json-social-media"
 
 
 def get_stream(url, prev=None):
@@ -61,4 +62,4 @@ while True:
         print(data[:5])
 
         for row in data:
-            producer.send("my_stream", value=row)
+            producer.send(KAFKA_TOPIC, value=row)

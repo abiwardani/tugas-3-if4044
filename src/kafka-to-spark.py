@@ -1,4 +1,3 @@
-from datetime import datetime
 import json
 
 from pyspark.streaming import StreamingContext
@@ -8,14 +7,6 @@ from pyspark import SparkContext
 from pyspark import SparkConf
 from pyspark import sql
 
-from pyspark.sql.types import (
-    StructType,
-    StructField,
-    StringType,
-    TimestampType,
-    IntegerType,
-)
-
 from utils.date import (
     facebook_date_to_YYYYMMDD_HHMMSS,
     round_time_five_minute,
@@ -24,7 +15,7 @@ from utils.date import (
     youtube_date_to_YYYYMMDD_HHMMSS,
 )
 
-from utils.db import URL, TABLE, USER, PASSWORD
+from utils.db import process_partition
 
 BOOTSTRAP_SERVER = "localhost:9092"
 KAFKA_TOPIC = "json-social-media"
@@ -70,9 +61,6 @@ def run_spark():
 
             return (socmed_type, rounded_timestamp, user_id, 1)
 
-        def aggreggate(x):
-            pass
-
         result = lines.window(window_length, sliding_interval)
         result = result.map(preprocess_json)
         result = result.map(
@@ -92,44 +80,8 @@ def run_spark():
     result.pprint()
 
     def saveToDB(rdd):
-        socmedTableSchema = StructType(
-            [
-                StructField("social_media", StringType(), True),
-                StructField("timestamp", TimestampType(), True),
-                StructField("unique_count", IntegerType(), True),
-                StructField("count", IntegerType(), True),
-                StructField("created_at", TimestampType(), True),
-                StructField("updated_at", TimestampType(), True),
-            ]
-        )
         if not rdd.isEmpty():
-            rdd = rdd.map(
-                lambda x: (
-                    x[0],
-                    datetime.strptime(x[1], "%Y-%m-%d %H:%M:%S"),
-                    x[2],
-                    x[3],
-                    datetime.now(),
-                    datetime.now(),
-                )
-            )
-            df = rdd.toDF(socmedTableSchema)
-            df.select(
-                "social_media",
-                "timestamp",
-                "count",
-                "unique_count",
-                "created_at",
-                "updated_at",
-            ).write.format("jdbc").mode("append").option("url", URL).option(
-                "driver", "org.postgresql.Driver"
-            ).option(
-                "dbtable", TABLE
-            ).option(
-                "user", USER
-            ).option(
-                "password", PASSWORD
-            ).save()
+            rdd.foreachPartition(process_partition)
 
     result.foreachRDD(saveToDB)
 
